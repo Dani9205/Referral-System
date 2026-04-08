@@ -1,0 +1,246 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Admin-User Chat</title>
+    <script src="/socket.io/socket.io.js"></script>
+    <style>
+        /* General Styles */
+        body {
+            margin: 0;
+            font-family: Arial, sans-serif;
+            background-color: #f5f5f5;
+            display: flex;
+            flex-direction: column;
+            height: 100vh;
+            justify-content: space-between;
+        }
+
+        h1 {
+            text-align: center;
+            margin: 10px;
+        }
+
+        /* Chat Container */
+        .chat-container {
+            display: flex;
+            flex-direction: column;
+            height: calc(100vh - 60px);
+            width: 100%;
+            margin: 0 auto;
+            background-color: #ffffff;
+            border: 1px solid #ddd;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        }
+
+        /* Chat Area */
+        #chat {
+            flex: 1;
+            padding: 10px;
+            overflow-y: auto;
+            background-color: #fafafa;
+            display: flex;
+            flex-direction: column;
+        }
+
+        /* Input Area */
+        .input-container {
+            display: flex;
+            padding: 10px;
+            background-color: #fff;
+            border-top: 1px solid #ddd;
+        }
+
+        .input-container select {
+            padding: 10px;
+            margin-right: 10px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+        }
+
+        .input-container input {
+            flex: 1;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            outline: none;
+            font-size: 14px;
+        }
+
+        .input-container button {
+            margin-left: 10px;
+            padding: 10px 15px;
+            border: none;
+            background-color: #4CAF50;
+            color: #fff;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 14px;
+            transition: background-color 0.3s ease;
+        }
+
+        .input-container button:hover {
+            background-color: #45a049;
+        }
+
+        /* Message Styles */
+        .message {
+            margin-bottom: 10px;
+            display: flex;
+            align-items: center;
+        }
+
+        .message .bubble {
+            padding: 10px;
+            border-radius: 10px;
+            max-width: 60%;
+            font-size: 14px;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+        }
+
+        .message.sender {
+            justify-content: flex-end;
+        }
+
+        .message.sender .bubble {
+            background-color: #d4edda;
+            color: #155724;
+        }
+
+        .message.receiver {
+            justify-content: flex-start;
+        }
+
+        .message.receiver .bubble {
+            background-color: #f1f1f1;
+            color: #333;
+        }
+
+        .message img {
+            max-width: 100%;
+            border-radius: 5px;
+            margin-top: 5px;
+        }
+    </style>
+</head>
+<body>
+    <h1>Real-Time Chat</h1>
+    <div class="chat-container">
+        <div id="chat"></div>
+        <div id="typingIndicator" style="padding: 5px; font-style: italic; color: #888;"></div>
+        <div class="input-container">
+            <select id="messageType">
+                <option value="text">Text</option>
+                <option value="image">Image</option>
+            </select>
+            <input type="text" id="message" placeholder="Type a message..." onkeypress="handleEnter(event)" />
+            <button onclick="sendMessage()">Send</button>
+        </div>
+    </div>
+
+    <script>
+        const socket = io();
+        const senderId = prompt('Enter your ID:'); // Simulated sender ID
+        const receiverId = prompt('Enter the receiver ID:'); // Simulated receiver ID
+        const senderType = prompt('Are you admin or user?'); // 'admin' or 'user'
+        const managerId = 1;
+
+        // Join chat
+        socket.emit('joinChat', { senderId, receiverId, senderType });
+
+        // Fetch previous messages
+        socket.emit('fetchMessages', { senderId, receiverId });
+
+        socket.on('previousMessages', (messages) => {
+            messages.forEach((msg) => displayMessage(msg));
+        });
+
+        socket.on('receiveMessage', (msg) => {
+            displayMessage(msg);
+        });
+
+        let typingTimeout;
+
+        document.getElementById('message').addEventListener('input', () => {
+            socket.emit('typing', { senderId, receiverId });
+
+            // Clear the timeout to avoid duplicate `stopTyping` events
+            clearTimeout(typingTimeout);
+
+            // Emit `stopTyping` after 2 seconds of no typing
+            typingTimeout = setTimeout(() => {
+                socket.emit('stopTyping', { senderId, receiverId });
+            }, 2000);
+        });
+
+        // Send Message (Modified to stop typing when sending)
+        function sendMessage() {
+            const messageInput = document.getElementById('message');
+            const messageType = document.getElementById('messageType').value;
+            const message = messageInput.value;
+
+            if (message) {
+                socket.emit('sendMessage', { 
+                    senderId, 
+                    receiverId, 
+                    senderType, 
+                    message, 
+                    managerId, 
+                    messageType 
+                });
+
+                // Stop typing
+                socket.emit('stopTyping', { senderId, receiverId });
+
+                messageInput.value = ''; // Clear input
+                messageInput.focus();
+            }
+        }
+
+        // Listen for user typing
+        socket.on('userTyping', ({ senderId, message }) => {
+            const typingIndicator = document.getElementById('typingIndicator');
+            typingIndicator.textContent = `User ${senderId} is typing...`;
+        });
+
+        // Listen for user stopped typing
+        socket.on('userStoppedTyping', ({ senderId }) => {
+            const typingIndicator = document.getElementById('typingIndicator');
+            typingIndicator.textContent = ''; // Clear the typing indicator
+        });
+
+        function handleEnter(event) {
+            if (event.key === 'Enter') {
+                sendMessage();
+            }
+        }
+
+        function displayMessage(msg) {
+            const chatDiv = document.getElementById('chat');
+            const messageElement = document.createElement('div');
+            const isSender = msg.senderId == senderId;
+
+            messageElement.className = `message ${isSender ? 'sender' : 'receiver'}`;
+
+            const bubble = document.createElement('div');
+            bubble.className = 'bubble';
+
+            if (msg.messageType === 'image') {
+                const img = document.createElement('img');
+                img.src = msg.message; // URL for the image
+                img.alt = 'Uploaded Image';
+                bubble.appendChild(img);
+            } else {
+                bubble.textContent = msg.message; // For text messages
+            }
+
+            messageElement.appendChild(bubble);
+            chatDiv.appendChild(messageElement);
+
+            // Auto-scroll to bottom
+            chatDiv.scrollTop = chatDiv.scrollHeight;
+        }
+    </script>
+</body>
+</html>
