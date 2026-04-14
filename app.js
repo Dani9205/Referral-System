@@ -119,13 +119,22 @@ app.get("/.well-known/assetlinks.json", (req, res) => {
 // Serve fallback HTML pages
 app.use(express.static("public"));
 
-// Mount routes
-app.use("/", universalRoutes);
-app.use('/api/referrals', referralRoutes);
-app.use('/api/auth', referralAuthRoutes);
-app.use('/api', referralManagerSysRoutes);        //new
-app.use('/api/upload', imageUploadRoutes);     // Optional: if you have separate upload route
-app.use("/api/payments", paymentRequestRoute);
+// // Mount routes
+// app.use("/", universalRoutes);
+// app.use('/api/referrals', referralRoutes);
+// app.use('/api/auth', referralAuthRoutes);
+// app.use('/api', referralManagerSysRoutes);        //new
+// app.use('/api/upload', imageUploadRoutes);     // Optional: if you have separate upload route
+// app.use("/api/payments", paymentRequestRoute);
+
+// Referral Routes Start
+    app.use("/referralsystem", universalRoutes);
+    app.use('/api/referralsystem/referrals', referralRoutes);
+    app.use('/api/referralsystem/auth', referralAuthRoutes);
+    app.use('/api/referralsystem', referralManagerSysRoutes);        //new
+    app.use('/api/referralsystem/upload', imageUploadRoutes);     // Optional: if you have separate upload route
+    app.use("/api/referralsystem/payments", paymentRequestRoute);
+// Referral Routes End
 
 // Initialize the ChatController with Socket.IO
 new ChatController(io);

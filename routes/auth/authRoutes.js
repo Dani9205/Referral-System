@@ -25,6 +25,9 @@ router.post("/signup/google", upload.none(), authController.signupWithGoogleRefe
 // Google Login
 router.post("/login/google", upload.none(), authController.loginWithGoogleReferralManager);
 
+// Signin with apple
+router.post("/signin/apple", upload.none(), authController.signinWithAppleReferralManager);
+
 //Refresh access token
 router.post("/refresh-token", upload.none(), authController.refreshToken);
 

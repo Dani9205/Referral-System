@@ -694,6 +694,198 @@ exports.loginWithGoogleReferralManager = async (req, res) => {
 
 
 
+//signin referral user with apple (signup + login)
+const { Op } = require("sequelize");
+
+exports.signinWithAppleReferralManager = async (req, res) => {
+  const t = await sequelize.transaction();
+
+  try {
+    const {
+      username,
+      imageUrl,
+      socialToken,
+      socialUid,
+      email,
+      signupType,
+    } = req.body;
+
+    const ANDROID_APP_REFERRAL_BASE_URL =
+      process.env.ANDROID_APP_REFERRAL_BASE_URL;
+    const IOS_APP_REFERRAL_BASE_URL =
+      process.env.IOS_APP_REFERRAL_BASE_URL;
+
+    // =========================
+    // ✅ VALIDATION
+    // =========================
+    if (!socialToken || !socialUid || !signupType) {
+      await t.rollback();
+      return res.status(400).json({
+        success: false,
+        message: "socialUid, socialToken and signupType are required",
+      });
+    }
+
+    if (signupType !== "apple") {
+      await t.rollback();
+      return res.status(400).json({
+        success: false,
+        message: "Invalid signupType",
+      });
+    }
+
+    const normalizedEmail = email
+      ? String(email).trim().toLowerCase()
+      : null;
+
+    // =========================
+    // 🔍 1. CHECK BY UID (PRIMARY)
+    // =========================
+    let user = await ReferralUser.findOne({
+      where: { socialUid, idType: "apple" },
+      transaction: t,
+    });
+
+    let isNewUser = false;
+
+    // =========================
+    // 🔐 LOGIN FLOW
+    // =========================
+    if (user) {
+      // ❌ NEVER update socialUid
+
+      // ✅ update email if provided & changed
+      if (normalizedEmail && user.email !== normalizedEmail) {
+        user.email = normalizedEmail;
+      }
+
+      // update image
+      if (imageUrl && user.imageUrl !== imageUrl) {
+        user.imageUrl = imageUrl;
+      }
+
+      // update token (optional but recommended)
+      if (socialToken && user.socialToken !== socialToken) {
+        user.socialToken = socialToken;
+      }
+    }
+
+    // =========================
+    // 🆕 SIGNUP FLOW
+    // =========================
+    else {
+      // 🔴 EMAIL CONFLICT CHECK (only if email provided)
+      if (normalizedEmail) {
+        const existingEmailUser = await ReferralUser.findOne({
+          where: { email: normalizedEmail },
+          transaction: t,
+        });
+
+        if (existingEmailUser) {
+          await t.rollback();
+          return res.status(400).json({
+            success: false,
+            message:
+              "Account already exists with this email using another account",
+          });
+        }
+      }
+
+      // ✅ CREATE USER
+      user = await ReferralUser.create(
+        {
+          name: username ? username.trim() : "Apple User",
+          email: normalizedEmail,
+          country: "N/A",
+          imageUrl: imageUrl || "",
+          phoneCode: "N/A",
+          phoneNo: "N/A",
+          socialUid,
+          socialToken,
+          idType: "apple",
+          status: "active",
+          balance: 0.0,
+        },
+        { transaction: t }
+      );
+
+      isNewUser = true;
+
+      // =========================
+      // 🔗 REFERRAL LINKS
+      // =========================
+      const androidReferrer = encodeURIComponent(`userId=${user.id}`);
+      user.androidAppReferralLink =
+        `${ANDROID_APP_REFERRAL_BASE_URL}&referrer=${androidReferrer}`;
+
+      user.iosAppReferralLink =
+        `${IOS_APP_REFERRAL_BASE_URL}?ref=${user.id}`;
+    }
+
+    // =========================
+    // 🔐 GENERATE JWT TOKENS
+    // =========================
+    const accessToken = jwt.sign(
+      { id: user.id, email: user.email },
+      process.env.JWT_SECRET,
+      { expiresIn: "1d" }
+    );
+
+    const refreshToken = jwt.sign(
+      { id: user.id },
+      process.env.JWT_REFRESH_SECRET,
+      { expiresIn: "7d" }
+    );
+
+    user.accessToken = accessToken;
+    user.refreshToken = refreshToken;
+    user.refreshTokenExpiry = new Date(
+      Date.now() + 7 * 24 * 60 * 60 * 1000
+    );
+
+    await user.save({ transaction: t });
+
+    await t.commit();
+
+    // =========================
+    // ✅ RESPONSE
+    // =========================
+    return res.status(200).json({
+      success: true,
+      message: isNewUser
+        ? "Apple signup successful"
+        : "Apple login successful",
+      accessToken,
+      refreshToken,
+      user: {
+        id: user.id,
+        name: user.name,
+        email: user.email,
+        imageUrl: user.imageUrl,
+        idType: user.idType,
+        androidAppReferralLink: user.androidAppReferralLink,
+        iosAppReferralLink: user.iosAppReferralLink,
+      },
+    });
+
+  } catch (error) {
+    await t.rollback();
+
+    console.error("Apple Auth Error:", error);
+
+    return res.status(500).json({
+      success: false,
+      message: "Apple Auth Failed",
+      error: error.message,
+    });
+  }
+};
+
+
+
+
+
+
 
 //refresh access Token
 exports.refreshToken = async (req, res) => {
