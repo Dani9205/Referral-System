@@ -98,7 +98,7 @@ const Subscription = sequelize.define('Subscription', {
     },
 
     status: {
-        type: DataTypes.ENUM('active', 'canceled', 'expired'),
+        type: DataTypes.ENUM('active', 'canceled', 'trial', 'expired', 'refunded'),
         allowNull: false,
     },
 
