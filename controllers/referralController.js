@@ -7,6 +7,7 @@ const RedeemHistory = require('../models/RedeemHistory');
 const Discount = require('../models/Discount');
 const AppLinks = require('../models/AppLinks');
 const ReferralUser = require('../models/ReferralUser.js');
+const ReferralManager = require('../models/ReferralManager');
 const ReferralDiscounts = require('../models/ReferralDiscounts'); 
 const { Sequelize, Op } = require('sequelize');
 const moment = require('moment'); // For better date control
@@ -1747,6 +1748,12 @@ const fetchRedeemHistoryByUid = async (req, res) => {
 };
 
 
+
+
+
+
+
+
 // Fetch redeem history with sorting, ordering, and pagination
 const redeemHistory = async (req, res) => {
   try {
@@ -1774,7 +1781,13 @@ const redeemHistory = async (req, res) => {
       order: [[sortBy, order]],
       limit: size,
       offset: offset,
-    });
+     include: [
+    {
+      model: ReferralManager,
+      as: 'manager',
+    },
+  ],
+});
 
     // Handle no records found
     if (!users.length) {
@@ -1810,6 +1823,12 @@ const redeemHistory = async (req, res) => {
     });
   }
 };
+
+
+
+
+
+
 
 
 

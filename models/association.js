@@ -47,6 +47,7 @@ const ReferralUser = require('./ReferralUser');
 const Subscription = require('./Subscription');
 const Points = require('./Points'); 
 const RedeemHistory = require('./RedeemHistory'); 
+const ReferralManager = require('./ReferralManager');
 
 // User → Points
 // Already defined in Points.js, can skip here
@@ -83,9 +84,28 @@ ReferralUser.hasMany(RedeemHistory, {
 });
 // ---------------------------------------------------------
 
+// ------------------- MANAGER ASSOCIATIONS -------------------
+
+// RedeemHistory → ReferralManager
+RedeemHistory.belongsTo(ReferralManager, {
+  foreignKey: 'managerId',   // redeem_history.managerId
+  targetKey: 'id',           // referral_managers.id
+  as: 'manager',             // UNIQUE alias (important)
+});
+
+// ReferralManager → RedeemHistory
+ReferralManager.hasMany(RedeemHistory, {
+  foreignKey: 'managerId',
+  sourceKey: 'id',
+  as: 'managerRedeems',
+});
+
+// -----------------------------------------------------------
+
 module.exports = {
   User,
   ReferralUser,
+  ReferralManager,
   Points,
   RedeemHistory,
   Subscription

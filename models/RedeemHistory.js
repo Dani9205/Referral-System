@@ -14,6 +14,16 @@ RedeemHistory.init(
             type: DataTypes.INTEGER,
             allowNull: false,
         },
+       managerId: {
+    type: DataTypes.INTEGER,
+    allowNull: true,
+    references: {
+        model: 'referral_managers',
+        key: 'id',
+    },
+    onUpdate: 'CASCADE',
+    onDelete: 'SET NULL',
+},
         points: {
             type: DataTypes.INTEGER,
             allowNull: false,
