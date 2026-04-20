@@ -2,6 +2,7 @@ const express = require("express");
 const router = express.Router();
 const multer = require("multer");
 const upload = multer();
+const authMiddleware = require("../middleware/authMiddleware");
 
 const {
   getActivePaymentRequests,
@@ -21,7 +22,7 @@ router.get('/pending-payment-requests', getPendingPaymentRequests);
 router.get('/redeemed-payment-requests', getRedeemedPaymentRequests);
 
 //change status  (accept/cancel)
-router.post("/redeem/update-status", upload.none(), updateRedeemStatus);
+router.post("/redeem/update-status", authMiddleware, upload.none(), updateRedeemStatus);
 
 //change status (successful)
 router.post("/payment-action", upload.none(), handlePaymentRequest);

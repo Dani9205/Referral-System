@@ -510,6 +510,66 @@ const getRedeemedPaymentRequests = async (req, res) => {
 //   }
 // };
 
+
+
+// const updateRedeemStatus = async (req, res) => {
+//   try {
+//     const { id, action } = req.body;
+
+//     // Validate input
+//     if (!id || !action) {
+//       return res.status(400).json({
+//         success: false,
+//         message: "id and action are required"
+//       });
+//     }
+
+//     let status;
+
+//     if (action === "cancel") {
+//       status = "cancelled";
+//     } else if (action === "accept") {
+//       status = "inProgress";
+//     } else {
+//       return res.status(400).json({
+//         success: false,
+//         message: "Invalid action. Use accept or cancel"
+//       });
+//     }
+
+//     // ✅ Update only if status is pending
+//     const query = `
+//       UPDATE redeem_history
+//       SET status = :status, updatedAt = NOW()
+//       WHERE id = :id AND status = 'pending'
+//     `;
+
+//     const [result] = await db.query(query, {
+//       replacements: { status, id }
+//     });
+
+//     // ✅ Handle invalid id OR non-pending status
+//     if (result.affectedRows === 0) {
+//       return res.status(400).json({
+//         success: false,
+//         message: "Invalid id or request is not pending"
+//       });
+//     }
+
+//     res.status(200).json({
+//       success: true,
+//       message: "Status updated successfully",
+//       newStatus: status
+//     });
+
+//   } catch (error) {
+//     res.status(500).json({
+//       success: false,
+//       message: "Update failed",
+//       error: error.message
+//     });
+//   }
+// };
 const updateRedeemStatus = async (req, res) => {
   try {
     const { id, action } = req.body;
@@ -535,18 +595,24 @@ const updateRedeemStatus = async (req, res) => {
       });
     }
 
-    // ✅ Update only if status is pending
+    // JWT se manager id
+    const managerId = req.user?.id;
+
+    // Update query (UPDATED LOGIC)
     const query = `
       UPDATE redeem_history
-      SET status = :status, updatedAt = NOW()
+      SET 
+        status = :status,
+        managerId = :managerId,
+        updatedAt = NOW()
       WHERE id = :id AND status = 'pending'
     `;
 
     const [result] = await db.query(query, {
-      replacements: { status, id }
+      replacements: { status, id, managerId }
     });
 
-    // ✅ Handle invalid id OR non-pending status
+    // Handle invalid id OR non-pending status
     if (result.affectedRows === 0) {
       return res.status(400).json({
         success: false,
@@ -568,7 +634,6 @@ const updateRedeemStatus = async (req, res) => {
     });
   }
 };
-
 
 
 
