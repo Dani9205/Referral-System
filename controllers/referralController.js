@@ -12,6 +12,8 @@ const ReferralDiscounts = require('../models/ReferralDiscounts');
 const { Sequelize, Op } = require('sequelize');
 const moment = require('moment'); // For better date control
 
+
+
 const getReferralDetails = async (req, res) => {
   try {
     const { uid } = req.body;
@@ -55,6 +57,27 @@ const getReferralDetails = async (req, res) => {
 
     const activeStatuses = ["active", "trial", "canceled"];
 
+    // ===================== UNIQUE SETS (FIX FOR THIS WEEK/MONTH) =====================
+    const sets = {
+      free: { week: new Set(), month: new Set() },
+
+      monthly: {
+        trial: { week: new Set(), month: new Set(), total: new Set() },
+        active: { week: new Set(), month: new Set(), total: new Set() },
+        canceled: { week: new Set(), month: new Set(), total: new Set() },
+        expired: { week: new Set(), month: new Set(), total: new Set() },
+        refunded: { week: new Set(), month: new Set(), total: new Set() },
+      },
+
+      yearly: {
+        trial: { week: new Set(), month: new Set(), total: new Set() },
+        active: { week: new Set(), month: new Set(), total: new Set() },
+        canceled: { week: new Set(), month: new Set(), total: new Set() },
+        expired: { week: new Set(), month: new Set(), total: new Set() },
+        refunded: { week: new Set(), month: new Set(), total: new Set() },
+      }
+    };
+
     for (const user of referredUsers) {
       const userCreatedDate = new Date(user.createdAt);
       const subs = user.Subscriptions || [];
@@ -69,9 +92,12 @@ const getReferralDetails = async (req, res) => {
         metrics.freeUsers.total++;
         if (userCreatedDate >= startOfMonth) metrics.freeUsers.thisMonth++;
         if (userCreatedDate >= startOfWeek) metrics.freeUsers.thisWeek++;
+
+        if (userCreatedDate >= startOfMonth) sets.free.month.add(user.id);
+        if (userCreatedDate >= startOfWeek) sets.free.week.add(user.id);
       }
 
-      // ===================== USER FLAGS =====================
+      // ===================== FLAGS =====================
       const monthlyFlags = {
         trial: false,
         active: false,
@@ -100,80 +126,44 @@ const getReferralDetails = async (req, res) => {
         }
       }
 
-      // ===================== UNIQUE USER COUNT =====================
-      if (monthlyFlags.trial) metrics.monthlyTrialUsers.total++;
-      if (monthlyFlags.active) metrics.monthlySubscribedUsers.total++;
-      if (monthlyFlags.canceled) metrics.monthlyCanceledUsers.total++;
-      if (monthlyFlags.expired) metrics.monthlyExpiredUsers.total++;
-      if (monthlyFlags.refunded) metrics.monthlyRefundedUsers.total++;
+      // ===================== TOTAL UNIQUE USERS =====================
+      if (monthlyFlags.trial) sets.monthly.trial.total.add(user.id);
+      if (monthlyFlags.active) sets.monthly.active.total.add(user.id);
+      if (monthlyFlags.canceled) sets.monthly.canceled.total.add(user.id);
+      if (monthlyFlags.expired) sets.monthly.expired.total.add(user.id);
+      if (monthlyFlags.refunded) sets.monthly.refunded.total.add(user.id);
 
-      if (yearlyFlags.trial) metrics.yearlyTrialUsers.total++;
-      if (yearlyFlags.active) metrics.yearlySubscribedUsers.total++;
-      if (yearlyFlags.canceled) metrics.yearlyCanceledUsers.total++;
-      if (yearlyFlags.expired) metrics.yearlyExpiredUsers.total++;
-      if (yearlyFlags.refunded) metrics.yearlyRefundedUsers.total++;
+      if (yearlyFlags.trial) sets.yearly.trial.total.add(user.id);
+      if (yearlyFlags.active) sets.yearly.active.total.add(user.id);
+      if (yearlyFlags.canceled) sets.yearly.canceled.total.add(user.id);
+      if (yearlyFlags.expired) sets.yearly.expired.total.add(user.id);
+      if (yearlyFlags.refunded) sets.yearly.refunded.total.add(user.id);
 
-      // ===================== THIS MONTH / WEEK =====================
+      // ===================== TIME BASED (FIXED USER BASED) =====================
       for (const subscription of subs) {
         const { status, planType } = subscription;
         const subscriptionCreatedDate = new Date(subscription.createdAt);
 
         if (planType === "monthly") {
-          if (status === "trial") {
-            if (subscriptionCreatedDate >= startOfMonth) metrics.monthlyTrialUsers.thisMonth++;
-            if (subscriptionCreatedDate >= startOfWeek) metrics.monthlyTrialUsers.thisWeek++;
+          if (subscriptionCreatedDate >= startOfMonth) {
+            sets.monthly[status]?.month?.add(user.id);
           }
-
-          else if (status === "active") {
-            if (subscriptionCreatedDate >= startOfMonth) metrics.monthlySubscribedUsers.thisMonth++;
-            if (subscriptionCreatedDate >= startOfWeek) metrics.monthlySubscribedUsers.thisWeek++;
-          }
-
-          else if (status === "canceled") {
-            if (subscriptionCreatedDate >= startOfMonth) metrics.monthlyCanceledUsers.thisMonth++;
-            if (subscriptionCreatedDate >= startOfWeek) metrics.monthlyCanceledUsers.thisWeek++;
-          }
-
-          else if (status === "expired") {
-            if (subscriptionCreatedDate >= startOfMonth) metrics.monthlyExpiredUsers.thisMonth++;
-            if (subscriptionCreatedDate >= startOfWeek) metrics.monthlyExpiredUsers.thisWeek++;
-          }
-
-          else if (status === "refunded") {
-            if (subscriptionCreatedDate >= startOfMonth) metrics.monthlyRefundedUsers.thisMonth++;
-            if (subscriptionCreatedDate >= startOfWeek) metrics.monthlyRefundedUsers.thisWeek++;
+          if (subscriptionCreatedDate >= startOfWeek) {
+            sets.monthly[status]?.week?.add(user.id);
           }
         }
 
-        else if (planType === "yearly") {
-          if (status === "trial") {
-            if (subscriptionCreatedDate >= startOfMonth) metrics.yearlyTrialUsers.thisMonth++;
-            if (subscriptionCreatedDate >= startOfWeek) metrics.yearlyTrialUsers.thisWeek++;
+        if (planType === "yearly") {
+          if (subscriptionCreatedDate >= startOfMonth) {
+            sets.yearly[status]?.month?.add(user.id);
           }
-
-          else if (status === "active") {
-            if (subscriptionCreatedDate >= startOfMonth) metrics.yearlySubscribedUsers.thisMonth++;
-            if (subscriptionCreatedDate >= startOfWeek) metrics.yearlySubscribedUsers.thisWeek++;
-          }
-
-          else if (status === "canceled") {
-            if (subscriptionCreatedDate >= startOfMonth) metrics.yearlyCanceledUsers.thisMonth++;
-            if (subscriptionCreatedDate >= startOfWeek) metrics.yearlyCanceledUsers.thisWeek++;
-          }
-
-          else if (status === "expired") {
-            if (subscriptionCreatedDate >= startOfMonth) metrics.yearlyExpiredUsers.thisMonth++;
-            if (subscriptionCreatedDate >= startOfWeek) metrics.yearlyExpiredUsers.thisWeek++;
-          }
-
-          else if (status === "refunded") {
-            if (subscriptionCreatedDate >= startOfMonth) metrics.yearlyRefundedUsers.thisMonth++;
-            if (subscriptionCreatedDate >= startOfWeek) metrics.yearlyRefundedUsers.thisWeek++;
+          if (subscriptionCreatedDate >= startOfWeek) {
+            sets.yearly[status]?.week?.add(user.id);
           }
         }
       }
 
-      // ===================== PAYMENTS =====================
+      // ===================== PAYMENTS (UNCHANGED) =====================
       for (const subscription of subs) {
         const payments = await Payment.findAll({
           where: {
@@ -192,7 +182,7 @@ const getReferralDetails = async (req, res) => {
             metrics.monthlyTotal.revenue += payment.amount;
           }
 
-          else if (planType === "yearly") {
+          if (planType === "yearly") {
             if (status === "trial") metrics.yearlyTrialUsers.revenue += payment.amount;
             if (status === "active") metrics.yearlySubscribedUsers.revenue += payment.amount;
             if (status === "canceled") metrics.yearlyCanceledUsers.revenue += payment.amount;
@@ -202,54 +192,93 @@ const getReferralDetails = async (req, res) => {
       }
     }
 
-    // ===================== FINAL TOTAL FIX =====================
+    // ===================== FINAL ASSIGNMENT =====================
 
-// TOTAL
-metrics.monthlyTotal.total =
-  metrics.monthlyTrialUsers.total +
-  metrics.monthlySubscribedUsers.total +
-  metrics.monthlyCanceledUsers.total +
-  metrics.monthlyExpiredUsers.total +
-  metrics.monthlyRefundedUsers.total;
+    // FREE
+    metrics.freeUsers.thisMonth = sets.free.month.size;
+    metrics.freeUsers.thisWeek = sets.free.week.size;
 
-metrics.yearlyTotal.total =
-  metrics.yearlyTrialUsers.total +
-  metrics.yearlySubscribedUsers.total +
-  metrics.yearlyCanceledUsers.total +
-  metrics.yearlyExpiredUsers.total +
-  metrics.yearlyRefundedUsers.total;
+    // MONTHLY
+    metrics.monthlyTrialUsers.total = sets.monthly.trial.total.size;
+    metrics.monthlySubscribedUsers.total = sets.monthly.active.total.size;
+    metrics.monthlyCanceledUsers.total = sets.monthly.canceled.total.size;
+    metrics.monthlyExpiredUsers.total = sets.monthly.expired.total.size;
+    metrics.monthlyRefundedUsers.total = sets.monthly.refunded.total.size;
 
+    metrics.monthlyTrialUsers.thisMonth = sets.monthly.trial.month.size;
+    metrics.monthlySubscribedUsers.thisMonth = sets.monthly.active.month.size;
+    metrics.monthlyCanceledUsers.thisMonth = sets.monthly.canceled.month.size;
+    metrics.monthlyExpiredUsers.thisMonth = sets.monthly.expired.month.size;
+    metrics.monthlyRefundedUsers.thisMonth = sets.monthly.refunded.month.size;
 
-// ===================== THIS MONTH SUM =====================
-metrics.monthlyTotal.thisMonth =
-  metrics.monthlyTrialUsers.thisMonth +
-  metrics.monthlySubscribedUsers.thisMonth +
-  metrics.monthlyCanceledUsers.thisMonth +
-  metrics.monthlyExpiredUsers.thisMonth +
-  metrics.monthlyRefundedUsers.thisMonth;
+    metrics.monthlyTrialUsers.thisWeek = sets.monthly.trial.week.size;
+    metrics.monthlySubscribedUsers.thisWeek = sets.monthly.active.week.size;
+    metrics.monthlyCanceledUsers.thisWeek = sets.monthly.canceled.week.size;
+    metrics.monthlyExpiredUsers.thisWeek = sets.monthly.expired.week.size;
+    metrics.monthlyRefundedUsers.thisWeek = sets.monthly.refunded.week.size;
 
-metrics.yearlyTotal.thisMonth =
-  metrics.yearlyTrialUsers.thisMonth +
-  metrics.yearlySubscribedUsers.thisMonth +
-  metrics.yearlyCanceledUsers.thisMonth +
-  metrics.yearlyExpiredUsers.thisMonth +
-  metrics.yearlyRefundedUsers.thisMonth;
+    // YEARLY
+    metrics.yearlyTrialUsers.total = sets.yearly.trial.total.size;
+    metrics.yearlySubscribedUsers.total = sets.yearly.active.total.size;
+    metrics.yearlyCanceledUsers.total = sets.yearly.canceled.total.size;
+    metrics.yearlyExpiredUsers.total = sets.yearly.expired.total.size;
+    metrics.yearlyRefundedUsers.total = sets.yearly.refunded.total.size;
 
+    metrics.yearlyTrialUsers.thisMonth = sets.yearly.trial.month.size;
+    metrics.yearlySubscribedUsers.thisMonth = sets.yearly.active.month.size;
+    metrics.yearlyCanceledUsers.thisMonth = sets.yearly.canceled.month.size;
+    metrics.yearlyExpiredUsers.thisMonth = sets.yearly.expired.month.size;
+    metrics.yearlyRefundedUsers.thisMonth = sets.yearly.refunded.month.size;
 
-// ===================== THIS WEEK SUM =====================
-metrics.monthlyTotal.thisWeek =
-  metrics.monthlyTrialUsers.thisWeek +
-  metrics.monthlySubscribedUsers.thisWeek +
-  metrics.monthlyCanceledUsers.thisWeek +
-  metrics.monthlyExpiredUsers.thisWeek +
-  metrics.monthlyRefundedUsers.thisWeek;
+    metrics.yearlyTrialUsers.thisWeek = sets.yearly.trial.week.size;
+    metrics.yearlySubscribedUsers.thisWeek = sets.yearly.active.week.size;
+    metrics.yearlyCanceledUsers.thisWeek = sets.yearly.canceled.week.size;
+    metrics.yearlyExpiredUsers.thisWeek = sets.yearly.expired.week.size;
+    metrics.yearlyRefundedUsers.thisWeek = sets.yearly.refunded.week.size;
 
-metrics.yearlyTotal.thisWeek =
-  metrics.yearlyTrialUsers.thisWeek +
-  metrics.yearlySubscribedUsers.thisWeek +
-  metrics.yearlyCanceledUsers.thisWeek +
-  metrics.yearlyExpiredUsers.thisWeek +
-  metrics.yearlyRefundedUsers.thisWeek;
+    // TOTALS
+    metrics.monthlyTotal.total =
+      metrics.monthlyTrialUsers.total +
+      metrics.monthlySubscribedUsers.total +
+      metrics.monthlyCanceledUsers.total +
+      metrics.monthlyExpiredUsers.total +
+      metrics.monthlyRefundedUsers.total;
+
+    metrics.yearlyTotal.total =
+      metrics.yearlyTrialUsers.total +
+      metrics.yearlySubscribedUsers.total +
+      metrics.yearlyCanceledUsers.total +
+      metrics.yearlyExpiredUsers.total +
+      metrics.yearlyRefundedUsers.total;
+
+    metrics.monthlyTotal.thisMonth =
+      metrics.monthlyTrialUsers.thisMonth +
+      metrics.monthlySubscribedUsers.thisMonth +
+      metrics.monthlyCanceledUsers.thisMonth +
+      metrics.monthlyExpiredUsers.thisMonth +
+      metrics.monthlyRefundedUsers.thisMonth;
+
+    metrics.monthlyTotal.thisWeek =
+      metrics.monthlyTrialUsers.thisWeek +
+      metrics.monthlySubscribedUsers.thisWeek +
+      metrics.monthlyCanceledUsers.thisWeek +
+      metrics.monthlyExpiredUsers.thisWeek +
+      metrics.monthlyRefundedUsers.thisWeek;
+
+    metrics.yearlyTotal.thisMonth =
+      metrics.yearlyTrialUsers.thisMonth +
+      metrics.yearlySubscribedUsers.thisMonth +
+      metrics.yearlyCanceledUsers.thisMonth +
+      metrics.yearlyExpiredUsers.thisMonth +
+      metrics.yearlyRefundedUsers.thisMonth;
+
+    metrics.yearlyTotal.thisWeek =
+      metrics.yearlyTrialUsers.thisWeek +
+      metrics.yearlySubscribedUsers.thisWeek +
+      metrics.yearlyCanceledUsers.thisWeek +
+      metrics.yearlyExpiredUsers.thisWeek +
+      metrics.yearlyRefundedUsers.thisWeek;
+
     return res.status(200).json({
       success: true,
       message: "Referral details fetched successfully.",
@@ -264,12 +293,6 @@ metrics.yearlyTotal.thisWeek =
     });
   }
 };
-
-
-
-
-
-
 // const getReferralDetails = async (req, res) => {
 //   try {
 //     const { uid } = req.body;
@@ -317,7 +340,7 @@ metrics.yearlyTotal.thisWeek =
 //       const userCreatedDate = new Date(user.createdAt);
 //       const subs = user.Subscriptions || [];
 
-//       // FREE USER LOGIC (cleaned)
+//       // ===================== FREE USER =====================
 //       const isFreeUser = !subs.some(sub => {
 //         const subEndDate = new Date(sub.endDate);
 //         return activeStatuses.includes(sub.status) && subEndDate >= currentDate;
@@ -329,87 +352,110 @@ metrics.yearlyTotal.thisWeek =
 //         if (userCreatedDate >= startOfWeek) metrics.freeUsers.thisWeek++;
 //       }
 
+//       // ===================== USER FLAGS =====================
+//       const monthlyFlags = {
+//         trial: false,
+//         active: false,
+//         canceled: false,
+//         expired: false,
+//         refunded: false,
+//       };
+
+//       const yearlyFlags = {
+//         trial: false,
+//         active: false,
+//         canceled: false,
+//         expired: false,
+//         refunded: false,
+//       };
+
+//       for (const subscription of subs) {
+//         const { status, planType } = subscription;
+
+//         if (planType === "monthly" && status in monthlyFlags) {
+//           monthlyFlags[status] = true;
+//         }
+
+//         if (planType === "yearly" && status in yearlyFlags) {
+//           yearlyFlags[status] = true;
+//         }
+//       }
+
+//       // ===================== UNIQUE USER COUNT =====================
+//       if (monthlyFlags.trial) metrics.monthlyTrialUsers.total++;
+//       if (monthlyFlags.active) metrics.monthlySubscribedUsers.total++;
+//       if (monthlyFlags.canceled) metrics.monthlyCanceledUsers.total++;
+//       if (monthlyFlags.expired) metrics.monthlyExpiredUsers.total++;
+//       if (monthlyFlags.refunded) metrics.monthlyRefundedUsers.total++;
+
+//       if (yearlyFlags.trial) metrics.yearlyTrialUsers.total++;
+//       if (yearlyFlags.active) metrics.yearlySubscribedUsers.total++;
+//       if (yearlyFlags.canceled) metrics.yearlyCanceledUsers.total++;
+//       if (yearlyFlags.expired) metrics.yearlyExpiredUsers.total++;
+//       if (yearlyFlags.refunded) metrics.yearlyRefundedUsers.total++;
+
+//       // ===================== THIS MONTH / WEEK =====================
 //       for (const subscription of subs) {
 //         const { status, planType } = subscription;
 //         const subscriptionCreatedDate = new Date(subscription.createdAt);
 
-//         // ===================== MONTHLY =====================
 //         if (planType === "monthly") {
-
 //           if (status === "trial") {
-//             metrics.monthlyTrialUsers.total++;
 //             if (subscriptionCreatedDate >= startOfMonth) metrics.monthlyTrialUsers.thisMonth++;
 //             if (subscriptionCreatedDate >= startOfWeek) metrics.monthlyTrialUsers.thisWeek++;
 //           }
 
 //           else if (status === "active") {
-//             metrics.monthlySubscribedUsers.total++;
 //             if (subscriptionCreatedDate >= startOfMonth) metrics.monthlySubscribedUsers.thisMonth++;
 //             if (subscriptionCreatedDate >= startOfWeek) metrics.monthlySubscribedUsers.thisWeek++;
 //           }
 
 //           else if (status === "canceled") {
-//             metrics.monthlyCanceledUsers.total++;
 //             if (subscriptionCreatedDate >= startOfMonth) metrics.monthlyCanceledUsers.thisMonth++;
 //             if (subscriptionCreatedDate >= startOfWeek) metrics.monthlyCanceledUsers.thisWeek++;
 //           }
 
 //           else if (status === "expired") {
-//             metrics.monthlyExpiredUsers.total++;
 //             if (subscriptionCreatedDate >= startOfMonth) metrics.monthlyExpiredUsers.thisMonth++;
 //             if (subscriptionCreatedDate >= startOfWeek) metrics.monthlyExpiredUsers.thisWeek++;
 //           }
 
 //           else if (status === "refunded") {
-//             metrics.monthlyRefundedUsers.total++;
 //             if (subscriptionCreatedDate >= startOfMonth) metrics.monthlyRefundedUsers.thisMonth++;
 //             if (subscriptionCreatedDate >= startOfWeek) metrics.monthlyRefundedUsers.thisWeek++;
 //           }
-
-//           metrics.monthlyTotal.total++;
-//           if (subscriptionCreatedDate >= startOfMonth) metrics.monthlyTotal.thisMonth++;
-//           if (subscriptionCreatedDate >= startOfWeek) metrics.monthlyTotal.thisWeek++;
 //         }
 
-//         // ===================== YEARLY =====================
 //         else if (planType === "yearly") {
-
 //           if (status === "trial") {
-//             metrics.yearlyTrialUsers.total++;
 //             if (subscriptionCreatedDate >= startOfMonth) metrics.yearlyTrialUsers.thisMonth++;
 //             if (subscriptionCreatedDate >= startOfWeek) metrics.yearlyTrialUsers.thisWeek++;
 //           }
 
 //           else if (status === "active") {
-//             metrics.yearlySubscribedUsers.total++;
 //             if (subscriptionCreatedDate >= startOfMonth) metrics.yearlySubscribedUsers.thisMonth++;
 //             if (subscriptionCreatedDate >= startOfWeek) metrics.yearlySubscribedUsers.thisWeek++;
 //           }
 
 //           else if (status === "canceled") {
-//             metrics.yearlyCanceledUsers.total++;
 //             if (subscriptionCreatedDate >= startOfMonth) metrics.yearlyCanceledUsers.thisMonth++;
 //             if (subscriptionCreatedDate >= startOfWeek) metrics.yearlyCanceledUsers.thisWeek++;
 //           }
 
 //           else if (status === "expired") {
-//             metrics.yearlyExpiredUsers.total++;
 //             if (subscriptionCreatedDate >= startOfMonth) metrics.yearlyExpiredUsers.thisMonth++;
 //             if (subscriptionCreatedDate >= startOfWeek) metrics.yearlyExpiredUsers.thisWeek++;
 //           }
 
 //           else if (status === "refunded") {
-//             metrics.yearlyRefundedUsers.total++;
 //             if (subscriptionCreatedDate >= startOfMonth) metrics.yearlyRefundedUsers.thisMonth++;
 //             if (subscriptionCreatedDate >= startOfWeek) metrics.yearlyRefundedUsers.thisWeek++;
 //           }
-
-//           metrics.yearlyTotal.total++;
-//           if (subscriptionCreatedDate >= startOfMonth) metrics.yearlyTotal.thisMonth++;
-//           if (subscriptionCreatedDate >= startOfWeek) metrics.yearlyTotal.thisWeek++;
 //         }
+//       }
 
-//         // ===================== PAYMENTS =====================
+//       // ===================== PAYMENTS =====================
+//       for (const subscription of subs) {
 //         const payments = await Payment.findAll({
 //           where: {
 //             subscriptionId: subscription.id,
@@ -418,6 +464,8 @@ metrics.yearlyTotal.thisWeek =
 //         });
 
 //         for (const payment of payments) {
+//           const { status, planType } = subscription;
+
 //           if (planType === "monthly") {
 //             if (status === "trial") metrics.monthlyTrialUsers.revenue += payment.amount;
 //             if (status === "active") metrics.monthlySubscribedUsers.revenue += payment.amount;
@@ -435,6 +483,54 @@ metrics.yearlyTotal.thisWeek =
 //       }
 //     }
 
+//     // ===================== FINAL TOTAL FIX =====================
+
+// // TOTAL
+// metrics.monthlyTotal.total =
+//   metrics.monthlyTrialUsers.total +
+//   metrics.monthlySubscribedUsers.total +
+//   metrics.monthlyCanceledUsers.total +
+//   metrics.monthlyExpiredUsers.total +
+//   metrics.monthlyRefundedUsers.total;
+
+// metrics.yearlyTotal.total =
+//   metrics.yearlyTrialUsers.total +
+//   metrics.yearlySubscribedUsers.total +
+//   metrics.yearlyCanceledUsers.total +
+//   metrics.yearlyExpiredUsers.total +
+//   metrics.yearlyRefundedUsers.total;
+
+
+// // ===================== THIS MONTH SUM =====================
+// metrics.monthlyTotal.thisMonth =
+//   metrics.monthlyTrialUsers.thisMonth +
+//   metrics.monthlySubscribedUsers.thisMonth +
+//   metrics.monthlyCanceledUsers.thisMonth +
+//   metrics.monthlyExpiredUsers.thisMonth +
+//   metrics.monthlyRefundedUsers.thisMonth;
+
+// metrics.yearlyTotal.thisMonth =
+//   metrics.yearlyTrialUsers.thisMonth +
+//   metrics.yearlySubscribedUsers.thisMonth +
+//   metrics.yearlyCanceledUsers.thisMonth +
+//   metrics.yearlyExpiredUsers.thisMonth +
+//   metrics.yearlyRefundedUsers.thisMonth;
+
+
+// // ===================== THIS WEEK SUM =====================
+// metrics.monthlyTotal.thisWeek =
+//   metrics.monthlyTrialUsers.thisWeek +
+//   metrics.monthlySubscribedUsers.thisWeek +
+//   metrics.monthlyCanceledUsers.thisWeek +
+//   metrics.monthlyExpiredUsers.thisWeek +
+//   metrics.monthlyRefundedUsers.thisWeek;
+
+// metrics.yearlyTotal.thisWeek =
+//   metrics.yearlyTrialUsers.thisWeek +
+//   metrics.yearlySubscribedUsers.thisWeek +
+//   metrics.yearlyCanceledUsers.thisWeek +
+//   metrics.yearlyExpiredUsers.thisWeek +
+//   metrics.yearlyRefundedUsers.thisWeek;
 //     return res.status(200).json({
 //       success: true,
 //       message: "Referral details fetched successfully.",
@@ -457,266 +553,8 @@ metrics.yearlyTotal.thisWeek =
 
 
 
-// const getReferralDetails = async (req, res) => {
-//   try {
-//     const {
-//       uid
-//     } = req.body; // Get UID from request parameters
-//     const currentDate = new Date();
 
-//     // Get the start of the week and month
-//     const startOfWeek = new Date();
-//     startOfWeek.setDate(currentDate.getDate() - currentDate.getDay());
-//     const startOfMonth = new Date(currentDate.getFullYear(), currentDate.getMonth(), 1);
-
-//     // Fetch referred users
-//     const referredUsers = await User.findAll({
-//       where: {
-//         referredUid: uid
-//       },
-//       include: [{
-//         model: Subscription,
-//         as: 'Subscriptions', // Include subscriptions
-//       },],
-//     });
-
-//     // Initialize metrics
-//     const metrics = {
-//       freeUsers: {
-//         total: 0,
-//         thisMonth: 0,
-//         thisWeek: 0,
-//         revenue: 0
-//       },
-//       monthlyTrialUsers: {
-//         total: 0,
-//         thisMonth: 0,
-//         thisWeek: 0,
-//         revenue: 0
-//       },
-//       monthlySubscribedUsers: {
-//         total: 0,
-//         thisMonth: 0,
-//         thisWeek: 0,
-//         revenue: 0
-//       },
-//       monthlyCanceledUsers: {
-//         total: 0,
-//         thisMonth: 0,
-//         thisWeek: 0,
-//         revenue: 0
-//       },
-//       monthlyExpiredUsers: {
-//         total: 0,
-//         thisMonth: 0,
-//         thisWeek: 0,
-//         revenue: 0
-// },
-//       monthlyRefundedUsers: {
-//         total: 0,
-//         thisMonth: 0,
-//         thisWeek: 0,
-//         revenue: 0
-// },
-//       yearlyTrialUsers: {
-//         total: 0,
-//         thisMonth: 0,
-//         thisWeek: 0,
-//         revenue: 0
-//       },
-//       yearlySubscribedUsers: {
-//         total: 0,
-//         thisMonth: 0,
-//         thisWeek: 0,
-//         revenue: 0
-//       },
-//       yearlyCanceledUsers: {
-//         total: 0,
-//         thisMonth: 0,
-//         thisWeek: 0,
-//         revenue: 0
-//       },
-//       yearlyExpiredUsers: {
-//         total: 0,
-//         thisMonth: 0,
-//         thisWeek: 0,
-//         revenue: 0
-// },
-//       yearlyRefundedUsers: {
-//         total: 0,
-//         thisMonth: 0,
-//         thisWeek: 0,
-//         revenue: 0
-// },
-//       // Subtotals for monthly and yearly
-//       monthlyTotal: {
-//         total: 0,
-//         thisMonth: 0,
-//         thisWeek: 0,
-//         revenue: 0
-//       },
-//       yearlyTotal: {
-//         total: 0,
-//         thisMonth: 0,
-//         thisWeek: 0,
-//         revenue: 0
-//       },
-//     };
-
-//     // Process referred users
-//     for (const user of referredUsers) {
-//       const userCreatedDate = new Date(user.createdAt);
-
-//       // Count free users (no subscriptions)
-//       // if (!user.Subscriptions.length) {
-//       //   metrics.freeUsers.total++;
-//       //   if (userCreatedDate >= startOfMonth) metrics.freeUsers.thisMonth++;
-//       //   if (userCreatedDate >= startOfWeek) metrics.freeUsers.thisWeek++;
-//       //   continue; // Skip subscription checks for free users
-//       // }
-
-
-//        const subs = user.Subscriptions || [];
-//       // const hasActiveSubscription = subs.some(sub => {
-//       // return sub.status === 'active' && new Date(sub.endDate) >= currentDate;
-//       // });
-//       // if (!subs.length || !hasActiveSubscription) {
-//       // metrics.freeUsers.total++;
-//       // if (userCreatedDate >= startOfMonth) metrics.freeUsers.thisMonth++;
-//       // if (userCreatedDate >= startOfWeek) metrics.freeUsers.thisWeek++;
-//       // }
-//     const isFreeUser = !subs.some(sub => {
-//     const subEndDate = new Date(sub.endDate);
-//     return ["active", "trial", "canceled"].includes(sub.status) && subEndDate >= currentDate;
-//     });
-//     if (isFreeUser) {
-//     metrics.freeUsers.total++;
-//     if (userCreatedDate >= startOfMonth) metrics.freeUsers.thisMonth++;
-//     if (userCreatedDate >= startOfWeek) metrics.freeUsers.thisWeek++;
-//     }
-
-//       // Process subscriptions
-//       for (const subscription of user.Subscriptions) {
-//         const {
-//           status,
-//           planType
-//         } = subscription;
-//         const subscriptionCreatedDate = new Date(subscription.createdAt);
-
-//         // Monthly Subscriptions
-//         if (planType === 'monthly') {
-//           if (status === 'trial') {
-//             metrics.monthlyTrialUsers.total++;
-//             if (subscriptionCreatedDate >= startOfMonth) metrics.monthlyTrialUsers.thisMonth++;
-//             if (subscriptionCreatedDate >= startOfWeek) metrics.monthlyTrialUsers.thisWeek++;
-//           } else if (status === 'active') {
-//             metrics.monthlySubscribedUsers.total++;
-//             if (subscriptionCreatedDate >= startOfMonth) metrics.monthlySubscribedUsers.thisMonth++;
-//             if (subscriptionCreatedDate >= startOfWeek) metrics.monthlySubscribedUsers.thisWeek++;
-//           } else if (status === 'canceled') {
-//             metrics.monthlyCanceledUsers.total++;
-//             if (subscriptionCreatedDate >= startOfMonth) metrics.monthlyCanceledUsers.thisMonth++;
-//             if (subscriptionCreatedDate >= startOfWeek) metrics.monthlyCanceledUsers.thisWeek++;
-//           }
-
-//           if (planType === 'monthly') {
-//           if (status === 'expired') {
-//          metrics.monthlyExpiredUsers.total++;
-//            if (subscriptionCreatedDate >= startOfMonth) metrics.monthlyExpiredUsers.thisMonth++;
-//           if (subscriptionCreatedDate >= startOfWeek) metrics.monthlyExpiredUsers.thisWeek++;
-//           }
-
-//           if (status === 'refunded') {
-//          metrics.monthlyRefundedUsers.total++;
-//            if (subscriptionCreatedDate >= startOfMonth) metrics.monthlyRefundedUsers.thisMonth++;
-//             if (subscriptionCreatedDate >= startOfWeek) metrics.monthlyRefundedUsers.thisWeek++;
-//           }
-//           }
-
-//           // Add to monthly subtotal
-//           metrics.monthlyTotal.total++;
-//           if (subscriptionCreatedDate >= startOfMonth) metrics.monthlyTotal.thisMonth++;
-//           if (subscriptionCreatedDate >= startOfWeek) metrics.monthlyTotal.thisWeek++;
-//         }
-
-//         // Yearly Subscriptions
-//         if (planType === 'yearly') {
-//           if (status === 'trial') {
-//             metrics.yearlyTrialUsers.total++;
-//             if (subscriptionCreatedDate >= startOfMonth) metrics.yearlyTrialUsers.thisMonth++;
-//             if (subscriptionCreatedDate >= startOfWeek) metrics.yearlyTrialUsers.thisWeek++;
-//           } else if (status === 'active') {
-//             metrics.yearlySubscribedUsers.total++;
-//             if (subscriptionCreatedDate >= startOfMonth) metrics.yearlySubscribedUsers.thisMonth++;
-//             if (subscriptionCreatedDate >= startOfWeek) metrics.yearlySubscribedUsers.thisWeek++;
-//           } else if (status === 'canceled') {
-//             metrics.yearlyCanceledUsers.total++;
-//             if (subscriptionCreatedDate >= startOfMonth) metrics.yearlyCanceledUsers.thisMonth++;
-//             if (subscriptionCreatedDate >= startOfWeek) metrics.yearlyCanceledUsers.thisWeek++;
-//           }
-
-//           if (planType === 'yearly') {
-//           if (status === 'expired') {
-//           metrics.yearlyExpiredUsers.total++;
-//              if (subscriptionCreatedDate >= startOfMonth) metrics.yearlyExpiredUsers.thisMonth++;
-//             if (subscriptionCreatedDate >= startOfWeek) metrics.yearlyExpiredUsers.thisWeek++;
-//           }
-
-//          if (status === 'refunded') {
-//         metrics.yearlyRefundedUsers.total++;
-//           if (subscriptionCreatedDate >= startOfMonth) metrics.yearlyRefundedUsers.thisMonth++;
-//           if (subscriptionCreatedDate >= startOfWeek) metrics.yearlyRefundedUsers.thisWeek++;
-//           }
-//           }
-//           // Add to yearly subtotal
-//           metrics.yearlyTotal.total++;
-//           if (subscriptionCreatedDate >= startOfMonth) metrics.yearlyTotal.thisMonth++;
-//           if (subscriptionCreatedDate >= startOfWeek) metrics.yearlyTotal.thisWeek++;
-//         }
-
-//         // Fetch payments and calculate revenue
-//         const payments = await Payment.findAll({
-//           where: {
-//             subscriptionId: subscription.id,
-//             status: 'completed',
-//           },
-//         });
-
-//         for (const payment of payments) {
-//           if (planType === 'monthly') {
-//             if (status === 'trial') metrics.monthlyTrialUsers.revenue += payment.amount;
-//             if (status === 'active') metrics.monthlySubscribedUsers.revenue += payment.amount;
-//             if (status === 'canceled') metrics.monthlyCanceledUsers.revenue += payment.amount;
-//             metrics.monthlyTotal.revenue += payment.amount; // Add to monthly subtotal
-//           } else if (planType === 'yearly') {
-//             if (status === 'trial') metrics.yearlyTrialUsers.revenue += payment.amount;
-//             if (status === 'active') metrics.yearlySubscribedUsers.revenue += payment.amount;
-//             if (status === 'canceled') metrics.yearlyCanceledUsers.revenue += payment.amount;
-//             metrics.yearlyTotal.revenue += payment.amount; // Add to yearly subtotal
-//           }
-//         }
-//       }
-//     }
-
-//     // Return the response
-//     return res.status(200).json({
-//       success: true,
-//       message: 'Referral details fetched successfully.',
-//       data: metrics,
-//     });
-//   } catch (error) {
-//     console.error(error);
-//     return res.status(500).json({
-//       success: false,
-//       message: 'Error fetching referral details.',
-//     });
-//   }
-// };
-
-
-
-
-
+//old 
 // const VALID_STATUSES = ['trial', 'active', 'canceled']; // active is subscribed
 // const VALID_TYPES = ['monthly', 'yearly'];
 // const VALID_SORT_FIELDS = ['name', 'installDate', 'subscribedDate', 'clearanceDate', 'clearDate', 'cancelledDate'];
@@ -1903,16 +1741,90 @@ const fetchCouponsByUid = async (req, res) => {
 
 
 
-// Redeem points for a user
+//// Redeem points for a user
+// const redeemPoints = async (req, res) => {
+//   try {
+//     const {
+//       uid,
+//       points
+//     } = req.body;
+
+//     // Input validation
+//     if (!uid || !points || points <= 0) {
+//       return res.status(400).json({
+//         success: false,
+//         message: 'Valid UID and points are required.',
+//       });
+//     }
+
+//     // Fetch user's points record
+//     const userPoints = await Points.findOne({
+//       where: {
+//         uid
+//       }
+//     });
+
+//     if (!userPoints) {
+//       return res.status(404).json({
+//         success: false,
+//         message: 'User points record not found.',
+//       });
+//     }
+
+//     // Check if user has enough active points to redeem
+//     if (userPoints.active < points) {
+//       return res.status(400).json({
+//         success: false,
+//         message: 'Insufficient active points to redeem.',
+//       });
+//     }
+
+//     // Deduct points from active
+//     userPoints.active -= points;
+
+//     // Add the redeemed points to total and redeemed
+//     userPoints.redeemed = (userPoints.redeemed || 0) + points;
+//     userPoints.total = userPoints.total + points; // Update total points
+
+//     // Mark status as 'successful'
+//     userPoints.status = 'successful';
+
+//     // Save changes to Points table 
+//     await userPoints.save();
+
+//     // Add entry to RedeemHistory table
+//     await RedeemHistory.create({
+//       uid: uid,
+//       points: points,
+//     });
+
+//     // Success response
+//     return res.status(200).json({
+//       success: true,
+//       message: 'Points redeemed successfully.',
+//       data: {
+//         updatedPoints: userPoints,
+//       },
+//     });
+//   } catch (error) {
+//     console.error('Error redeeming points:', error.message, error.stack);
+//     return res.status(500).json({
+//       success: false,
+//       message: 'Failed to redeem points.',
+//     });
+//   }
+// };
+
+
 const redeemPoints = async (req, res) => {
   try {
-    const {
-      uid,
-      points
-    } = req.body;
+    const { uid, points } = req.body;
+
+    // 🔹 Convert points to integer
+    const pointsValue = parseInt(points, 10);
 
     // Input validation
-    if (!uid || !points || points <= 0) {
+    if (!uid || !pointsValue || pointsValue <= 0) {
       return res.status(400).json({
         success: false,
         message: 'Valid UID and points are required.',
@@ -1921,9 +1833,7 @@ const redeemPoints = async (req, res) => {
 
     // Fetch user's points record
     const userPoints = await Points.findOne({
-      where: {
-        uid
-      }
+      where: { uid }
     });
 
     if (!userPoints) {
@@ -1933,31 +1843,35 @@ const redeemPoints = async (req, res) => {
       });
     }
 
+    // 🔹 Safely cast DB values to numbers
+    const activePoints = Number(userPoints.active);
+    const redeemedPoints = Number(userPoints.redeemed || 0);
+
     // Check if user has enough active points to redeem
-    if (userPoints.active < points) {
+    if (activePoints < pointsValue) {
       return res.status(400).json({
         success: false,
         message: 'Insufficient active points to redeem.',
       });
     }
 
-    // Deduct points from active
-    userPoints.active -= points;
+    // ✅ Correct logic
+    userPoints.active = activePoints - pointsValue;     // decrease
+    userPoints.redeemed = redeemedPoints + pointsValue; // increase
 
-    // Add the redeemed points to total and redeemed
-    userPoints.redeemed = (userPoints.redeemed || 0) + points;
-    userPoints.total = userPoints.total + points; // Update total points
+    // ❌ total ko touch nahi karna
+    // userPoints.total = totalPoints + pointsValue;
 
     // Mark status as 'successful'
     userPoints.status = 'successful';
 
-    // Save changes to Points table 
+    // Save changes
     await userPoints.save();
 
     // Add entry to RedeemHistory table
     await RedeemHistory.create({
       uid: uid,
-      points: points,
+      points: pointsValue,
     });
 
     // Success response
@@ -1968,6 +1882,7 @@ const redeemPoints = async (req, res) => {
         updatedPoints: userPoints,
       },
     });
+
   } catch (error) {
     console.error('Error redeeming points:', error.message, error.stack);
     return res.status(500).json({
@@ -1976,6 +1891,9 @@ const redeemPoints = async (req, res) => {
     });
   }
 };
+
+
+
 
 
 
