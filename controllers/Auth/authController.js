@@ -1031,45 +1031,127 @@ const upload = multer({
 exports.uploadProfilePicture = async (req, res) => {
   upload(req, res, async (err) => {
     try {
+      // 🔴 Multer error handling
       if (err) {
         console.error("Upload Error:", err.message);
-        return res.status(400).json({ success: false, message: err.message });
-      }
-
-      if (!req.file) {
-        return res.status(400).json({ success: false, message: "Profile picture is required" });
-      }
-
-      const userId = req.user.id; // From JWT middleware
-      const user = await ReferralUser.findByPk(userId);
-
-      if (!user) {
-        return res.status(404).json({ success: false, message: "User not found" });
-      }
-
-      // Delete old image if exists and is local
-      if (user.imageUrl && user.imageUrl.includes("/uploads/")) {
-        const oldPath = path.join(__dirname, "../../", user.imageUrl.replace(`${req.protocol}://${req.get("host")}/`, ""));
-        fs.unlink(oldPath, (err) => {
-          if (err) console.log("Old image not deleted:", err.message);
+        return res.status(400).json({
+          success: false,
+          message: err.message,
         });
       }
 
-      // Generate full URL for frontend
-      const fullUrl = `${req.protocol}://${req.get("host")}/uploads/${req.file.filename}`;
-      user.imageUrl = fullUrl;
+      // 🔴 File required check
+      if (!req.file) {
+        return res.status(400).json({
+          success: false,
+          message: "Profile picture is required",
+        });
+      }
+
+      const userId = req.user.id;
+      const { name } = req.body;
+
+      // 🔍 Find user
+      const user = await ReferralUser.findByPk(userId);
+      if (!user) {
+        return res.status(404).json({
+          success: false,
+          message: "User not found",
+        });
+      }
+
+      // 🧹 Delete old image (if local)
+      if (user.imageUrl && user.imageUrl.includes("/uploads/")) {
+        const relativePath = user.imageUrl.replace(
+          `${req.protocol}://${req.get("host")}/`,
+          ""
+        );
+
+        const oldImagePath = path.join(__dirname, "../../", relativePath);
+
+        fs.unlink(oldImagePath, (unlinkErr) => {
+          if (unlinkErr) {
+            console.log("Old image not deleted:", unlinkErr.message);
+          }
+        });
+      }
+
+      // 🌐 New image URL
+      const imageUrl = `${req.protocol}://${req.get("host")}/uploads/${req.file.filename}`;
+
+      // 📝 Update fields
+      user.imageUrl = imageUrl;
+
+      if (name) {
+        user.name = name;
+      }
+
       await user.save();
 
+      // ✅ Success response
       return res.status(200).json({
         success: true,
-        message: "Profile picture updated successfully",
-        imageUrl: fullUrl,
+        message: "Profile picture & name updated successfully",
+        data: {
+          name: user.name,
+          imageUrl,
+        },
       });
 
     } catch (error) {
       console.error("Upload Controller Error:", error);
-      return res.status(500).json({ success: false, message: "Upload failed", error: error.message });
+      return res.status(500).json({
+        success: false,
+        message: "Upload failed",
+        error: error.message,
+      });
     }
   });
 };
+// // Controller function
+// exports.uploadProfilePicture = async (req, res) => {
+//   upload(req, res, async (err) => {
+//     try {
+//       if (err) {
+//         console.error("Upload Error:", err.message);
+//         return res.status(400).json({ success: false, message: err.message });
+//       }
+
+//       if (!req.file) {
+//         return res.status(400).json({ success: false, message: "Profile picture is required" });
+//       }
+
+//       const userId = req.user.id; // From JWT middleware
+//       const user = await ReferralUser.findByPk(userId);
+
+//       if (!user) {
+//         return res.status(404).json({ success: false, message: "User not found" });
+//       }
+
+//       // Delete old image if exists and is local
+//       if (user.imageUrl && user.imageUrl.includes("/uploads/")) {
+//         const oldPath = path.join(__dirname, "../../", user.imageUrl.replace(`${req.protocol}://${req.get("host")}/`, ""));
+//         fs.unlink(oldPath, (err) => {
+//           if (err) console.log("Old image not deleted:", err.message);
+//         });
+//       }
+
+//       // Generate full URL for frontend
+//       const fullUrl = `${req.protocol}://${req.get("host")}/uploads/${req.file.filename}`;
+//       user.imageUrl = fullUrl;
+//       await user.save();
+
+//       return res.status(200).json({
+//         success: true,
+//         message: "Profile picture updated successfully",
+//         name: user.name,
+//         imageUrl: fullUrl,
+//       });
+
+//     } catch (error) {
+//       console.error("Upload Controller Error:", error);
+//       return res.status(500).json({ success: false, message: "Upload failed", error: error.message });
+//     }
+//   });
+// };
 
