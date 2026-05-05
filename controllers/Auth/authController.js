@@ -1040,7 +1040,17 @@ exports.uploadProfilePicture = async (req, res) => {
         });
       }
 
-      // 🔴 File required check
+      const userId = req.user.id;
+      const { name } = req.body;
+
+      // 🔴 Required validations
+      if (!name || name.trim() === "") {
+        return res.status(400).json({
+          success: false,
+          message: "Name is required",
+        });
+      }
+
       if (!req.file) {
         return res.status(400).json({
           success: false,
@@ -1048,8 +1058,23 @@ exports.uploadProfilePicture = async (req, res) => {
         });
       }
 
-      const userId = req.user.id;
-      const { name } = req.body;
+      // 🔴 File type validation
+      const allowedTypes = ["image/jpeg", "image/png", "image/jpg", "image/webp"];
+      if (!allowedTypes.includes(req.file.mimetype)) {
+        return res.status(400).json({
+          success: false,
+          message: "Only image files (jpeg, png, jpg, webp) are allowed",
+        });
+      }
+
+      // 🔴 File size validation (e.g. 2MB)
+      const maxSize = 5 * 1024 * 1024;
+      if (req.file.size > maxSize) {
+        return res.status(400).json({
+          success: false,
+          message: "File size must be less than 5MB",
+        });
+      }
 
       // 🔍 Find user
       const user = await ReferralUser.findByPk(userId);
@@ -1081,10 +1106,7 @@ exports.uploadProfilePicture = async (req, res) => {
 
       // 📝 Update fields
       user.imageUrl = imageUrl;
-
-      if (name) {
-        user.name = name;
-      }
+      user.name = name.trim();
 
       await user.save();
 
@@ -1108,6 +1130,101 @@ exports.uploadProfilePicture = async (req, res) => {
     }
   });
 };
+
+
+
+
+
+
+
+
+//// Controller function
+// exports.uploadProfilePicture = async (req, res) => {
+//   upload(req, res, async (err) => {
+//     try {
+//       // 🔴 Multer error handling
+//       if (err) {
+//         console.error("Upload Error:", err.message);
+//         return res.status(400).json({
+//           success: false,
+//           message: err.message,
+//         });
+//       }
+
+//       // 🔴 File required check
+//       if (!req.file) {
+//         return res.status(400).json({
+//           success: false,
+//           message: "Profile picture is required",
+//         });
+//       }
+
+//       const userId = req.user.id;
+//       const { name } = req.body;
+
+//       // 🔍 Find user
+//       const user = await ReferralUser.findByPk(userId);
+//       if (!user) {
+//         return res.status(404).json({
+//           success: false,
+//           message: "User not found",
+//         });
+//       }
+
+//       // 🧹 Delete old image (if local)
+//       if (user.imageUrl && user.imageUrl.includes("/uploads/")) {
+//         const relativePath = user.imageUrl.replace(
+//           `${req.protocol}://${req.get("host")}/`,
+//           ""
+//         );
+
+//         const oldImagePath = path.join(__dirname, "../../", relativePath);
+
+//         fs.unlink(oldImagePath, (unlinkErr) => {
+//           if (unlinkErr) {
+//             console.log("Old image not deleted:", unlinkErr.message);
+//           }
+//         });
+//       }
+
+//       // 🌐 New image URL
+//       const imageUrl = `${req.protocol}://${req.get("host")}/uploads/${req.file.filename}`;
+
+//       // 📝 Update fields
+//       user.imageUrl = imageUrl;
+
+//       if (name) {
+//         user.name = name;
+//       }
+
+//       await user.save();
+
+//       // ✅ Success response
+//       return res.status(200).json({
+//         success: true,
+//         message: "Profile picture & name updated successfully",
+//         data: {
+//           name: user.name,
+//           imageUrl,
+//         },
+//       });
+
+//     } catch (error) {
+//       console.error("Upload Controller Error:", error);
+//       return res.status(500).json({
+//         success: false,
+//         message: "Upload failed",
+//         error: error.message,
+//       });
+//     }
+//   });
+// };
+
+
+
+
+
+
 // // Controller function
 // exports.uploadProfilePicture = async (req, res) => {
 //   upload(req, res, async (err) => {
