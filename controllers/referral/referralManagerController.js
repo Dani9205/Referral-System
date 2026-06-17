@@ -810,7 +810,7 @@ const getSingleReferralUser = async (req, res) => {
       // RedeemHistory.count({
       //   where: { uid: managerId }
       // }),
-      Coupon.count({
+      RedeemHistory.count({
         where: { uid: managerId }
       })
     ]);
