@@ -804,9 +804,12 @@ const getSingleReferralUser = async (req, res) => {
       Points.sum('total', {
         where: { uid: managerId }
       }),
-      RedeemHistory.count({
-        where: { uid: managerId }
+      RedeemHistory.sum('points', {
+      where: { uid: managerId }
       }),
+      // RedeemHistory.count({
+      //   where: { uid: managerId }
+      // }),
       Coupon.count({
         where: { uid: managerId }
       })
@@ -835,72 +838,7 @@ const getSingleReferralUser = async (req, res) => {
   }
 };
 
-// const getSingleReferralUser = async (req, res) => {
-//   try {
-//     const managerId = Number(req.params.id);
 
-//     if (!managerId) {
-//       return res.status(400).json({
-//         success: false,
-//         message: "Invalid manager ID"
-//       });
-//     }
-
-//     // 1️⃣ Fetch manager
-//     const manager = await ReferralUser.findByPk(managerId, {
-//       attributes: ['id', 'name', 'imageUrl', 'balance'] // country removed
-//     });
-
-//     if (!manager) {
-//       return res.status(404).json({
-//         success: false,
-//         message: "Referral manager not found"
-//       });
-//     }
-
-//     // 2️⃣ Calculate totals for this manager only
-//     const totalIncome = await Payment.sum('amount', {
-//       where: {
-//         uid: managerId,      // Only manager's own payments
-//         status: 'completed'
-//       }
-//     });
-
-//     const totalRedeem = await RedeemHistory.sum('amount', {
-//       where: {
-//         uid: managerId,      // Only manager's own redeems
-//         status: 'successful'
-//       }
-//     });
-
-//     const totalRequests = await RedeemHistory.count({
-//       where: {
-//         uid: managerId       // Only manager's own redeem requests
-//       }
-//     });
-
-//     return res.status(200).json({
-//       success: true,
-//       message: "Referral manager fetched successfully.",
-//       data: {
-//         id: manager.id,
-//         name: manager.name,
-//         imageUrl: manager.imageUrl,
-//         balance: Number(manager.balance) || 0,
-//         totalIncome: Number(totalIncome) || 0,
-//         totalRedeem: Number(totalRedeem) || 0,
-//         totalRequests: totalRequests || 0
-//       }
-//     });
-
-//   } catch (error) {
-//     console.error('Get Single Referral Manager Error:', error);
-//     return res.status(500).json({
-//       success: false,
-//       message: 'Internal server error'
-//     });
-//   }
-// };
 
 
 
